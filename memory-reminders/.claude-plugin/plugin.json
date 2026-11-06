@@ -1,0 +1,6 @@
+{
+  "name": "memory-reminders",
+  "version": "0.1.0",
+  "description": "Shows a band above the prompt for `remind: YYYY-MM-DD text` lines in Claude memory notes that are due.",
+  "types": "./types/index.d.ts"
+}
