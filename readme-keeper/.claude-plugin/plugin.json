@@ -1,0 +1,5 @@
+{
+  "name": "readme-keeper",
+  "version": "0.1.0",
+  "description": "After a commit, asks Claude to update a README.md that is 5+ commits stale; lints READMEs against standard-readme after each edit."
+}
