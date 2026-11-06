@@ -1,5 +1,5 @@
 {
   "name": "no-ai-trailer",
-  "version": "0.1.0",
-  "description": "Blocks git commits whose message carries an AI co-author trailer."
+  "version": "0.2.0",
+  "description": "Git guards: blocks commits with an AI co-author trailer or a non-Conventional-Commits subject, force pushes, and secret files or keys headed into history."
 }
