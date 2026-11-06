@@ -1,0 +1,5 @@
+{
+  "name": "voice-check",
+  "version": "0.1.0",
+  "description": "Refuses outgoing emails, chat messages and gh PR/issue text that use words from the AI-writing blacklist, once; the same text sent again goes through."
+}
