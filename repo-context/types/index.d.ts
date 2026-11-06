@@ -17,9 +17,26 @@ export type RepoInfo = {
   name: string | null
   // The remote's web page (`https://github.com/owner/repo`), or null when it has none.
   web: string | null
+  // The user's open pull requests on GitHub; empty when none or gh cannot tell.
+  prs: RepoPr[]
 }
 
 export type RepoCommit = { hash: string; subject: string; at: number }
+
+export type RepoPr = {
+  number: number
+  title: string
+  url: string
+  isDraft: boolean
+  ci: 'pass' | 'fail' | 'pending' | 'none'
+  review: 'approved' | 'changes' | 'waiting' | 'none'
+}
+
+// Which list a changed file sits in; a file staged and changed again is in both.
+export type ChangeGroup = 'staged' | 'unstaged' | 'untracked'
+
+// The diff open under a file row in the pane.
+export type OpenDiff = { group: ChangeGroup; path: string; text: string }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -27,6 +44,7 @@ declare module 'claude-code' {
       info: Shaped<RepoInfo | null>
       // The git action running from the pane ("pull", "push", "switch"), or null.
       busy: string | null
+      diff: Shaped<OpenDiff | null>
     }
   }
 }

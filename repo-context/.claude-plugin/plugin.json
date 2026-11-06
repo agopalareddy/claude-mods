@@ -1,6 +1,6 @@
 {
   "name": "repo-context",
-  "version": "0.3.0",
-  "description": "Shows the git branch in the status line, a git pane (/git) with branch switch, pull, push and fetch, and a band above the prompt when the session is not in a git repo.",
+  "version": "0.4.0",
+  "description": "Status line with git branch, session cost and context use; a git pane (/git) with branch switch, pull, push, fetch, file diffs, open PRs with CI and review state, and linked commits; a band when the session is not in a git repo.",
   "types": "./types/index.d.ts"
 }

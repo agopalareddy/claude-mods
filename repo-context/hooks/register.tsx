@@ -1,13 +1,89 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { RepoInfo } from '../types'
+import type { ChangeGroup, OpenDiff, RepoInfo, RepoPr } from '../types'
 
 const PANE = 'repo-context'
 // Change the tag when RepoInfo's fields change: a value stored by an older
 // version is then read as null and refreshed, not drawn with missing fields.
-const info = atom({ plugin: 'repo-context', key: 'info' } as const, null, { shape: 'info-4' })
+const info = atom({ plugin: 'repo-context', key: 'info' } as const, null, { shape: 'info-5' })
 const busy = atom({ plugin: 'repo-context', key: 'busy' } as const, null)
+const diff = atom({ plugin: 'repo-context', key: 'diff' } as const, null, { shape: 'diff-1' })
+
+// Longest diff drawn under a file row, cut at a hunk boundary so it still parses.
+const DIFF_CHARS = 20_000
+
+// `gh pr list --json` rows, as far as the pane reads them.
+type GhPr = {
+  number: number; title: string; url: string; isDraft: boolean; reviewDecision: string
+  statusCheckRollup: { status?: string; conclusion?: string; state?: string }[] | null
+}
+
+// One CI verdict from a PR's checks: any failure fails, then anything unfinished is pending.
+export function ciState(checks: GhPr['statusCheckRollup']): RepoPr['ci'] {
+  if (!checks || checks.length === 0) return 'none'
+  const results = checks.map(c => (c.conclusion || c.state || '').toUpperCase())
+  if (results.some(r => ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(r))) return 'fail'
+  if (checks.some((c, i) => (c.status !== undefined && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED', ''].includes(results[i]!))) return 'pending'
+  return 'pass'
+}
+
+// The user's open PRs in the repo; empty when gh is missing, signed out or the repo is not on GitHub.
+// ponytail: one gh call per refresh (each turn end); cache by time if it ever feels slow.
+async function openPrs($: EngineInterface, cwd: string): Promise<RepoPr[]> {
+  try {
+    const ran = await $.process.run(
+      ['gh', 'pr', 'list', '--author', '@me', '--state', 'open', '--limit', '5', '--json', 'number,title,url,isDraft,reviewDecision,statusCheckRollup'],
+      { cwd, timeoutMs: 15_000 },
+    )
+    if (ran.exitCode !== 0) return []
+    return (JSON.parse(ran.stdout) as GhPr[]).map(p => ({
+      number: p.number,
+      title: p.title,
+      url: p.url,
+      isDraft: p.isDraft,
+      ci: ciState(p.statusCheckRollup),
+      review: p.reviewDecision === 'APPROVED' ? 'approved' : p.reviewDecision === 'CHANGES_REQUESTED' ? 'changes' : p.reviewDecision === 'REVIEW_REQUIRED' ? 'waiting' : 'none',
+    }))
+  } catch {
+    return []
+  }
+}
+
+// The porcelain lines split into the three lists the pane draws, as [code letter, path].
+// `R  old -> new` is listed under its new path.
+export function groupChanges(files: string[]): Record<ChangeGroup, [string, string][]> {
+  const groups: Record<ChangeGroup, [string, string][]> = { staged: [], unstaged: [], untracked: [] }
+  for (const f of files) {
+    const [x = ' ', y = ' '] = f
+    const path = f.slice(3).split(' -> ').at(-1)!
+    if (x === '?') groups.untracked.push(['?', path])
+    else {
+      if (x !== ' ') groups.staged.push([x, path])
+      if (y !== ' ') groups.unstaged.push([y, path])
+    }
+  }
+  return groups
+}
+
+// The diff text for one file in one list, cut to DIFF_CHARS at a hunk boundary.
+async function loadDiff($: EngineInterface, group: ChangeGroup, path: string): Promise<string> {
+  const args = group === 'staged' ? ['diff', '--cached', '--', path]
+    : group === 'unstaged' ? ['diff', '--', path]
+      : ['diff', '--no-index', '--', '/dev/null', path]
+  const text = (await $.process.run(['git', ...args], { cwd: await $.session.cwd() })).stdout
+  if (text.length <= DIFF_CHARS) return text
+  const cut = text.lastIndexOf('\n@@', DIFF_CHARS)
+  return cut > 0 ? text.slice(0, cut + 1) : ''
+}
+
+// Opens the file's diff under its row, or closes it when it is the one open.
+async function toggleDiff($: EngineInterface, group: ChangeGroup, path: string): Promise<void> {
+  const open = await read($, diff)
+  if (open?.group === group && open.path === path) return void (await update($, diff, () => null))
+  const text = await loadDiff($, group, path)
+  await update($, diff, () => ({ group, path, text }))
+}
 
 // `## main...origin/main [ahead 1, behind 2]`, the first line of `status -b`.
 export function parseBranchLine(line: string): Pick<RepoInfo, 'upstream' | 'ahead' | 'behind'> {
@@ -35,7 +111,7 @@ async function refresh($: EngineInterface): Promise<void> {
 
   let next: RepoInfo
   if (head.exitCode !== 0) {
-    next = { cwd, name: null, web: null, branch: null, isDirty: false, upstream: null, ahead: 0, behind: 0, branches: [], files: [], commits: [] }
+    next = { cwd, name: null, web: null, branch: null, isDirty: false, upstream: null, ahead: 0, behind: 0, branches: [], files: [], commits: [], prs: [] }
   } else {
     const [top = '', branch = ''] = head.stdout.trim().split('\n')
     const [branchLine = '', ...files] = (await git('status', '--porcelain', '-b')).stdout.split('\n').filter(Boolean)
@@ -49,11 +125,30 @@ async function refresh($: EngineInterface): Promise<void> {
     // The tracked branch's remote (`origin` of `origin/main`), else origin.
     const remote = await git('remote', 'get-url', sync.upstream?.split('/')[0] ?? 'origin')
     const web = remote.exitCode === 0 ? webUrl(remote.stdout) : null
-    next = { cwd, name, web, branch, isDirty: files.length > 0, ...sync, branches, files, commits }
+    const prs = web?.startsWith('https://github.com/') ? await openPrs($, cwd) : []
+    next = { cwd, name, web, branch, isDirty: files.length > 0, ...sync, branches, files, commits, prs }
   }
 
   await update($, info, () => next)
-  $.ui.status(next.branch === null ? undefined : `git: ${next.branch}${next.isDirty ? '*' : ''}`)
+  // An open diff follows the file: redrawn when it changed, closed when the file left that list.
+  const open = await read($, diff)
+  if (open !== null) {
+    const still = groupChanges(next.files)[open.group].some(([, p]) => p === open.path)
+    const text = still ? await loadDiff($, open.group, open.path) : ''
+    await update($, diff, () => (still ? { ...open, text } : null))
+  }
+  $.ui.status(await statusText($, next))
+}
+
+// `git: main* · $1.24 · 38% context`; the git part only inside a repo.
+async function statusText($: EngineInterface, repo: RepoInfo): Promise<string | undefined> {
+  const usage = await $.session.usage().catch(() => null)
+  const parts = [
+    repo.branch === null ? '' : `git: ${repo.branch}${repo.isDirty ? '*' : ''}`,
+    usage?.cost ? `$${usage.cost.usd.toFixed(2)}` : '',
+    usage?.context.percent !== undefined ? `${Math.round(usage.context.percent)}% context` : '',
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : undefined
 }
 
 // Runs one git action from the pane, says how it went in a toast, then refreshes.
@@ -74,9 +169,18 @@ async function act($: EngineInterface, name: string, args: string[]): Promise<vo
   }
 }
 
-// Color for a two-letter `git status --porcelain` code.
-function statusColor(code: string): 'green' | 'yellow' | 'red' | 'cyan' {
-  if (code === '??' || code.includes('A')) return 'green'
+const GROUP_TITLE: Record<ChangeGroup, string> = { staged: 'Staged', unstaged: 'Not staged', untracked: 'Untracked' }
+type Tone = 'green' | 'yellow' | 'red' | 'cyan'
+const CI: Record<RepoPr['ci'], [string, Tone | undefined]> = {
+  pass: ['✓ CI', 'green'], fail: ['✗ CI', 'red'], pending: ['… CI', 'yellow'], none: ['no CI', undefined],
+}
+const REVIEW: Record<Exclude<RepoPr['review'], 'none'>, [string, Tone]> = {
+  approved: ['approved', 'green'], changes: ['changes asked', 'red'], waiting: ['needs review', 'yellow'],
+}
+
+// Color for a `git status --porcelain` letter.
+function statusColor(code: string): Tone {
+  if (code.includes('?') || code.includes('A')) return 'green'
   if (code.includes('D')) return 'red'
   if (code.includes('R')) return 'cyan'
   return 'yellow'
@@ -129,11 +233,13 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const table = $.ui.resolve(e)
-    const { Box, Button, Link, Text } = table
+    const { Box, Button, Code, Link, Text } = table
     // The mobile surface has no Select; it gets the pane without the branch picker.
     const Select = 'Select' in table ? table.Select : undefined
     const repo = await read($, info)
     const running = await read($, busy)
+    const openDiff = await read($, diff)
+    const groups = groupChanges(repo?.files ?? [])
 
     if (repo === null || repo.branch === null) {
       return <Text dimColor>Not in a git repo{repo ? `: ${repo.cwd}` : ''}.</Text>
@@ -196,14 +302,49 @@ export const register: Register = on => {
 
         <Box flexDirection="column">
           {section('Changes', repo.files.length === 0 ? 'clean' : String(repo.files.length))}
-          {repo.files.slice(0, fileRoom).map(f => (
-            <Box flexDirection="row" gap={1}>
-              <Text mono color={statusColor(f.slice(0, 2))}>{f.slice(0, 2).replace(/ /g, '·')}</Text>
-              <Text wrap="truncate-middle">{f.slice(3)}</Text>
-            </Box>
-          ))}
-          {repo.files.length > fileRoom && <Text dimColor>+{repo.files.length - fileRoom} more</Text>}
+          {(['staged', 'unstaged', 'untracked'] as const).map(group => {
+            const rows = groups[group]
+            if (rows.length === 0) return null
+            return (
+              <Box flexDirection="column">
+                <Text dimColor>{GROUP_TITLE[group]} {rows.length}</Text>
+                {rows.slice(0, fileRoom).map(([letter, path]) => {
+                  const isOpen = openDiff?.group === group && openDiff.path === path
+                  return (
+                    <Box flexDirection="column">
+                      {/* The whole row opens or closes the file's diff below it. */}
+                      <Button key={`${group}:${path}`} plain onPress={() => toggleDiff($, group, path)}>
+                        <Text dimColor>{isOpen ? '▾' : '▸'}</Text> <Text mono color={statusColor(letter)}>{letter}</Text> {path}
+                      </Button>
+                      {isOpen && (openDiff.text === ''
+                        ? <Text dimColor>No text diff (binary or too large).</Text>
+                        : <Code source={openDiff.text} format="diff" path={path} />)}
+                    </Box>
+                  )
+                })}
+                {rows.length > fileRoom && <Text dimColor>+{rows.length - fileRoom} more</Text>}
+              </Box>
+            )
+          })}
         </Box>
+
+        {repo.prs.length > 0 && (
+          <Box flexDirection="column">
+            {section('Pull requests', String(repo.prs.length))}
+            {repo.prs.map(p => (
+              <Box flexDirection="row" gap={1} alignItems="flex-start">
+                <Box flexShrink={0}><Text mono dimColor>#{p.number}</Text></Box>
+                <Box flexGrow={1} flexShrink={1} width={0}>
+                  <Text wrap="wrap"><Link href={p.url}>{p.title}</Link>{p.isDraft ? <Text dimColor> (draft)</Text> : ''}</Text>
+                </Box>
+                <Box flexShrink={0} flexDirection="row" gap={1}>
+                  <Text color={CI[p.ci][1]}>{CI[p.ci][0]}</Text>
+                  {p.review !== 'none' && <Text color={REVIEW[p.review][1]}>{REVIEW[p.review][0]}</Text>}
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        )}
 
         <Box flexDirection="column">
           {section('Commits', `last ${repo.commits.length}`)}

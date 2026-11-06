@@ -28,6 +28,14 @@ const PANE = {
 } as const
 
 const NOW = 1_800_000_000_000
+const APP_DIFF = 'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-const a = 1\n+const a = 2\n'
+// What `gh pr list --json` gives: one failing PR waiting on review, one passing approved draft.
+const PRS = [
+  { number: 12, title: 'feat: pane', url: 'https://github.com/me/proj/pull/12', isDraft: false, reviewDecision: 'REVIEW_REQUIRED',
+    statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'COMPLETED', conclusion: 'FAILURE' }] },
+  { number: 13, title: 'fix: crash', url: 'https://github.com/me/proj/pull/13', isDraft: true, reviewDecision: 'APPROVED',
+    statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }] },
+]
 
 type Repo ={ branch: string; dirty: boolean; branchLine?: string }
 
@@ -36,6 +44,7 @@ function fakeHost(on: any, cwd: string, repo: Repo | null) {
   const seen = { status: undefined as string | undefined, toasts: [] as string[], runs: [] as string[], opened: 0 }
   on('session.cwd', () => ({ value: cwd }))
   on('clock.now', () => ({ value: NOW }))
+  on('session.usage', () => ({ value: { startedAt: 0, rateLimits: [], cost: { usd: 1.236 }, context: { window: 200_000, percent: 38.4 } } }))
   on('process.run', (_: unknown, e: { argv: readonly string[] }) => {
     const a = e.argv.slice(1).join(' ')
     seen.runs.push(a)
@@ -46,6 +55,8 @@ function fakeHost(on: any, cwd: string, repo: Repo | null) {
       return out(`${repo.branchLine ?? `## ${repo.branch}...origin/${repo.branch} [ahead 1, behind 2]`}\n${repo.dirty ? ' M src/app.ts\n?? notes.md\n' : ''}`)
     }
     if (a.startsWith('remote')) return out('git@github.com:me/proj.git\n')
+    if (e.argv[0] === 'gh') return out(JSON.stringify(PRS))
+    if (a === 'diff -- src/app.ts') return out(APP_DIFF)
     if (a.startsWith('branch'))return out('main\nfeat/pane\n')
     // Committed 2 hours and 3 days before NOW, in seconds as `%ct` gives them.
     if (a.startsWith('log')) return out(`abc1234\t${NOW / 1000 - 7200}\tfeat: add pane\ndef5678\t${NOW / 1000 - 3 * 86400}\tfix: crash\n`)
@@ -78,11 +89,11 @@ function fakeHost(on: any, cwd: string, repo: Repo | null) {
   return seen
 }
 
-test('outside a repo: band shows the folder, status cleared, no pane opened', async ($, on) => {
+test('outside a repo: band shows the folder, status shows usage only, no pane opened', async ($, on) => {
   const seen = fakeHost(on, '/home/me', null)
   await $.session.start({ cwd: '/home/me', surface: 'terminal', isInteractive: true })
 
-  expect(seen.status).toBeUndefined()
+  expect(seen.status).toBe('$1.24 · 38% context')
   expect(seen.opened).toBe(0)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
@@ -95,7 +106,7 @@ test('inside a repo: status line, pane opens with branch, sync, changes and comm
   const seen = fakeHost(on, '/home/me/proj', { branch: 'main', dirty: true })
   await $.session.start({ cwd: '/home/me/proj', surface: 'terminal', isInteractive: true })
 
-  expect(seen.status).toBe('git: main*')
+  expect(seen.status).toBe('git: main* · $1.24 · 38% context')
   expect(seen.opened).toBe(1)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
@@ -105,8 +116,14 @@ test('inside a repo: status line, pane opens with branch, sync, changes and comm
     expect((await ui.find({ key: 'pull' }))?.text).toBe('Pull ↓2')
     expect((await ui.find({ key: 'push' }))?.text).toBe('Push ↑1')
     expect(await ui.find({ type: 'Text', text: /CHANGES {2}2/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '·M' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'src/app.ts' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Not staged 1' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Untracked 1' })).toBeDefined()
+    expect((await ui.find({ key: 'unstaged:src/app.ts' }))?.text).toMatch(/▸ M src\/app\.ts/)
+    expect((await ui.find({ type: 'Link', text: 'feat: pane' }))?.props.href).toBe('https://github.com/me/proj/pull/12')
+    expect(await ui.find({ type: 'Text', text: '✗ CI' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'needs review' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '✓ CI' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'approved' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'abc1234' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'feat: add pane' })).toBeDefined()
     expect((await ui.find({ type: 'Link', text: 'feat: add pane' }))?.props.href).toBe('https://github.com/me/proj/commit/abc1234')
@@ -117,6 +134,22 @@ test('inside a repo: status line, pane opens with branch, sync, changes and comm
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await band.find({ type: 'Text', text: /Not in a git repo/ })).toBeUndefined()
   await band.unmount()
+})
+
+test('pressing a changed file opens its diff below it; pressing again closes it', async ($, on) => {
+  fakeHost(on, '/home/me/proj', { branch: 'main', dirty: true })
+  await $.session.start({ cwd: '/home/me/proj', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  await ui.press({ key: 'unstaged:src/app.ts' })
+  const code = await ui.find({ type: 'Code' })
+  expect(code?.props.source).toBe(APP_DIFF)
+  expect(code?.props.format).toBe('diff')
+  expect((await ui.find({ key: 'unstaged:src/app.ts' }))?.text).toMatch(/^▾/)
+
+  await ui.press({ key: 'unstaged:src/app.ts' })
+  expect(await ui.find({ type: 'Code' })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('pane actions: switch branch, pull, push failure, each toasted and refreshed', async ($, on) => {
@@ -132,7 +165,7 @@ test('pane actions: switch branch, pull, push failure, each toasted and refreshe
 
   await ui.select({ key: 'branch', value: 'feat/pane' })
   expect(seen.runs).toContain('switch feat/pane')
-  expect(seen.status).toBe('git: feat/pane')
+  expect(seen.status).toMatch(/^git: feat\/pane · /)
 
   await ui.press({ key: 'pull' })
   expect(seen.runs).toContain('pull --ff-only')
