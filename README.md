@@ -62,7 +62,7 @@ Each mod works on its own once installed. Replace `<mod>` above with its name.
 | `native-edits` | Refuses file edits through Bash (`sed -i`, `perl -pi`, `> file`, `tee file`, `open(..., 'w')`) so edits go through the Edit and Write tools. | After Edit or Write fails twice on a file, Bash may edit it until the next successful edit. |
 | `voice-check` | Refuses outgoing email, chat messages and `gh pr`/`gh issue` text that uses words from an AI-writing blacklist, listing each word with a plainer one. | Send the same text again unchanged and it goes through. |
 | `readme-keeper` | After a commit, asks Claude to update a `README.md` that has not changed in 5 commits; lints any README Claude edits against [standard-readme](https://github.com/RichardLitt/standard-readme). | Asks once per repository per session. |
-| `repo-context` | Shows `git: <branch>` in the status line (`*` when the work tree has changes) and a band above the prompt when the session is not in a git repository. | Not a guard. |
+| `repo-context` | Shows `git: <branch>` in the status line (`*` when the work tree has changes), a git pane (`/git`) to switch branch, pull, push and fetch, with changed files and recent commits, and a band above the prompt when the session is not in a git repository. | Not a guard. |
 | `memory-reminders` | Shows a band above the prompt for each `remind: YYYY-MM-DD text` line in `~/.claude/projects/*/memory/*.md` that is due. | "Hide for this session" button. |
 
 Each mod has tests: `claude plugin test <mod>`.
