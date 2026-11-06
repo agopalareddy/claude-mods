@@ -2,6 +2,8 @@
   "name": "claude-mods",
   "owner": { "name": "Aadarsha Gopala Reddy" },
   "plugins": [
-    { "name": "no-ai-trailer", "source": "./no-ai-trailer" }
+    { "name": "no-ai-trailer", "source": "./no-ai-trailer" },
+    { "name": "repo-context", "source": "./repo-context" },
+    { "name": "native-edits", "source": "./native-edits" }
   ]
 }
