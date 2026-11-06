@@ -42,10 +42,6 @@ Plugins, Add marketplace with `agopalareddy/claude-mods`, then Add plugin.
 After a push to this repository, refresh installed mods with
 `claude plugin marketplace update claude-mods`.
 
-This repository is private. Installing needs read access on GitHub and a git credential
-for github.com on the machine (an SSH key, or `gh auth login` then `gh auth setup-git`);
-the install never prompts for one.
-
 `readme-keeper` also needs its linter, installed once:
 
 ```bash
