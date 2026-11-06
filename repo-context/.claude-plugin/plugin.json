@@ -1,0 +1,6 @@
+{
+  "name": "repo-context",
+  "version": "0.1.0",
+  "description": "Shows the git branch in the status line, and a band above the prompt when the session is not in a git repo.",
+  "types": "./types/index.d.ts"
+}
