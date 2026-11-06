@@ -1,53 +1,83 @@
 # claude-mods
 
-Personal Claude Code mods (hooks modules), one folder per mod. The repository is
-also a plugin marketplace, so each mod installs with one line.
+> Personal Claude Code mods that turn my working rules into hooks.
 
-## Mods
+Each folder is one mod (a Claude Code hooks module). The repository is also a plugin
+marketplace, so each mod installs with one line.
 
-### no-ai-trailer
+## Table of Contents
 
-Refuses any `git commit` run through Claude's Bash tool when the message carries an
-AI co-author trailer (`Co-Authored-By: Claude`, Copilot, Cursor and similar). Human
-co-authors pass. A message given with `git commit -F <file>` is not checked.
+- [Background](#background)
+- [Install](#install)
+- [Usage](#usage)
+- [Maintainers](#maintainers)
+- [Contributing](#contributing)
+- [License](#license)
 
-### repo-context
+## Background
 
-Shows the current git branch in the status line (`git: main`, with `*` when the work
-tree has changes), and a yellow band above the prompt when the session's folder is not
-inside a git repository. Refreshes at session start and after each turn.
-
-### native-edits
-
-Refuses file edits made through Bash (`sed -i`, `perl -pi`, `> file`, `>> file`,
-`tee file`, `open(..., 'w')` in a script) so Claude uses its Edit and Write tools.
-When Edit or Write fails twice on the same file, Bash may edit that file until the
-next successful Edit or Write on it. Matching is by regex over the command text, not
-a shell parser, so some writes (`dd of=`, `cp`, `mv`) are not caught.
+Rules written in `CLAUDE.md` or a memory note are text Claude reads and can miss. A mod
+runs in the Claude Code engine and checks every tool call, so a rule holds in every
+session. Most mods here enforce one rule and leave a way out when the rule is wrong for
+the case at hand.
 
 ## Install
 
 At the prompt of a terminal session, one line per mod:
 
 ```
-/plugin install no-ai-trailer --marketplace agopalareddy/claude-mods
-/plugin install repo-context --marketplace agopalareddy/claude-mods
-/plugin install native-edits --marketplace agopalareddy/claude-mods
+/plugin install <mod> --marketplace agopalareddy/claude-mods
 ```
 
-Answer `y` to add the marketplace, then pick a scope (user scope loads it in every session).
-
-From a shell:
+Answer `y` to add the marketplace, then pick a scope (user scope loads it in every
+session). From a shell:
 
 ```bash
-claude plugin install no-ai-trailer --marketplace agopalareddy/claude-mods
-claude plugin install repo-context --marketplace agopalareddy/claude-mods
-claude plugin install native-edits --marketplace agopalareddy/claude-mods
+claude plugin install <mod> --marketplace agopalareddy/claude-mods
 ```
 
 In the desktop app, where `/plugin` does not run: click + next to the prompt box, then
 Plugins, Add marketplace with `agopalareddy/claude-mods`, then Add plugin.
 
+After a push to this repository, refresh installed mods with
+`claude plugin marketplace update claude-mods`.
+
 This repository is private. Installing needs read access on GitHub and a git credential
 for github.com on the machine (an SSH key, or `gh auth login` then `gh auth setup-git`);
 the install never prompts for one.
+
+`readme-keeper` also needs its linter, installed once:
+
+```bash
+npm i --prefix ~/.cache/readme-keeper remark-cli@12 standard-readme-preset
+```
+
+## Usage
+
+Each mod works on its own once installed. Replace `<mod>` above with its name.
+
+| Mod | What it does | Way out |
+| --- | --- | --- |
+| `no-ai-trailer` | Refuses a `git commit` whose message has an AI co-author trailer (Claude, Copilot, Cursor and others). Human co-authors pass. | None; remove the trailer. A `-F <file>` message is not checked. |
+| `native-edits` | Refuses file edits through Bash (`sed -i`, `perl -pi`, `> file`, `tee file`, `open(..., 'w')`) so edits go through the Edit and Write tools. | After Edit or Write fails twice on a file, Bash may edit it until the next successful edit. |
+| `voice-check` | Refuses outgoing email, chat messages and `gh pr`/`gh issue` text that uses words from an AI-writing blacklist, listing each word with a plainer one. | Send the same text again unchanged and it goes through. |
+| `readme-keeper` | After a commit, asks Claude to update a `README.md` that has not changed in 5 commits; lints any README Claude edits against [standard-readme](https://github.com/RichardLitt/standard-readme). | Asks once per repository per session. |
+| `repo-context` | Shows `git: <branch>` in the status line (`*` when the work tree has changes) and a band above the prompt when the session is not in a git repository. | Not a guard. |
+| `memory-reminders` | Shows a band above the prompt for each `remind: YYYY-MM-DD text` line in `~/.claude/projects/*/memory/*.md` that is due. | "Hide for this session" button. |
+
+Each mod has tests: `claude plugin test <mod>`.
+
+## Maintainers
+
+[@agopalareddy](https://github.com/agopalareddy)
+
+## Contributing
+
+This is a personal repository and does not take outside contributions. To change a mod,
+edit it, run `claude plugin test <mod>` and `claude plugin validate <mod>`, then commit
+with a Conventional Commits message scoped to the mod, for example
+`fix(native-edits): catch dd of=`.
+
+## License
+
+© 2026 Aadarsha Gopala Reddy. All rights reserved.

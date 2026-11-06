@@ -4,6 +4,9 @@
   "plugins": [
     { "name": "no-ai-trailer", "source": "./no-ai-trailer" },
     { "name": "repo-context", "source": "./repo-context" },
-    { "name": "native-edits", "source": "./native-edits" }
+    { "name": "native-edits", "source": "./native-edits" },
+    { "name": "memory-reminders", "source": "./memory-reminders" },
+    { "name": "voice-check", "source": "./voice-check" },
+    { "name": "readme-keeper", "source": "./readme-keeper" }
   ]
 }
