@@ -1,0 +1,6 @@
+{
+  "name": "usage-meter",
+  "version": "0.1.0",
+  "description": "Usage pane (/meter): cost, tokens and cache savings by day, week, month, year and all time from your transcripts; /keepwarm pings the prompt cache before it lapses while you are idle.",
+  "types": "./types/index.d.ts"
+}

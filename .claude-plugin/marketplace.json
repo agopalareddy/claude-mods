@@ -7,6 +7,7 @@
     { "name": "native-edits", "source": "./native-edits" },
     { "name": "memory-reminders", "source": "./memory-reminders" },
     { "name": "voice-check", "source": "./voice-check" },
-    { "name": "readme-keeper", "source": "./readme-keeper" }
+    { "name": "readme-keeper", "source": "./readme-keeper" },
+    { "name": "usage-meter", "source": "./usage-meter" }
   ]
 }
