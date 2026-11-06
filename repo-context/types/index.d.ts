@@ -15,6 +15,8 @@ export type RepoInfo = {
   commits: RepoCommit[]
   // The repository folder's name (`claude-mods`), or null outside a repo.
   name: string | null
+  // The remote's web page (`https://github.com/owner/repo`), or null when it has none.
+  web: string | null
 }
 
 export type RepoCommit = { hash: string; subject: string; at: number }

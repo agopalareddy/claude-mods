@@ -45,7 +45,8 @@ function fakeHost(on: any, cwd: string, repo: Repo | null) {
     if (a.startsWith('status')) {
       return out(`${repo.branchLine ?? `## ${repo.branch}...origin/${repo.branch} [ahead 1, behind 2]`}\n${repo.dirty ? ' M src/app.ts\n?? notes.md\n' : ''}`)
     }
-    if (a.startsWith('branch')) return out('main\nfeat/pane\n')
+    if (a.startsWith('remote')) return out('git@github.com:me/proj.git\n')
+    if (a.startsWith('branch'))return out('main\nfeat/pane\n')
     // Committed 2 hours and 3 days before NOW, in seconds as `%ct` gives them.
     if (a.startsWith('log')) return out(`abc1234\t${NOW / 1000 - 7200}\tfeat: add pane\ndef5678\t${NOW / 1000 - 3 * 86400}\tfix: crash\n`)
     if (a.startsWith('switch')) {
@@ -108,6 +109,7 @@ test('inside a repo: status line, pane opens with branch, sync, changes and comm
     expect(await ui.find({ type: 'Text', text: 'src/app.ts' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'abc1234' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'feat: add pane' })).toBeDefined()
+    expect((await ui.find({ type: 'Link', text: 'feat: add pane' }))?.props.href).toBe('https://github.com/me/proj/commit/abc1234')
     expect(await ui.find({ type: 'Text', text: '2h' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '3d' })).toBeDefined()
     await ui.unmount()
