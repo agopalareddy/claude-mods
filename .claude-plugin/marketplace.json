@@ -1,0 +1,7 @@
+{
+  "name": "claude-mods",
+  "owner": { "name": "Aadarsha Gopala Reddy" },
+  "plugins": [
+    { "name": "no-ai-trailer", "source": "./no-ai-trailer" }
+  ]
+}

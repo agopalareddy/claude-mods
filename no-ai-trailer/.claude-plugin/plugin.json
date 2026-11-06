@@ -1,0 +1,5 @@
+{
+  "name": "no-ai-trailer",
+  "version": "0.1.0",
+  "description": "Blocks git commits whose message carries an AI co-author trailer."
+}
