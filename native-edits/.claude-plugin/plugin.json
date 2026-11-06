@@ -1,0 +1,6 @@
+{
+  "name": "native-edits",
+  "version": "0.1.0",
+  "description": "Refuses file edits through Bash (sed -i, > file, tee, python open 'w') until Edit/Write has failed twice on that file.",
+  "types": "./types/index.d.ts"
+}
